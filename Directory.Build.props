@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <Authors>Hiroya Aramaki</Authors>
+    <Company>MackySoft</Company>
+    <RepositoryUrl>https://github.com/mackysoft/Moira</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <Nullable>enable</Nullable>
+    <Deterministic>true</Deterministic>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+</Project>

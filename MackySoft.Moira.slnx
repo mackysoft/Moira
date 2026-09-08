@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MackySoft.Moira/MackySoft.Moira.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MackySoft.Moira.Tests/MackySoft.Moira.Tests.csproj" />
+  </Folder>
+</Solution>

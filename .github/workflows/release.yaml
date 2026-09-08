@@ -1,0 +1,456 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "[0-9]*.[0-9]*.[0-9]*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag without a prefix, for example 1.2.3.
+        required: true
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Require the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$REF_NAME" != "$DEFAULT_BRANCH" ]]; then
+            printf 'release dispatch must run from %s; actual: %s\n' "$DEFAULT_BRANCH" "$REF_NAME" >&2
+            exit 1
+          fi
+
+      - name: Create release app token
+        id: release_app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Checkout release source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.repository.default_branch }}
+          token: ${{ steps.release_app.outputs.token }}
+          persist-credentials: true
+
+      - name: Resolve release app identity
+        id: release_app_identity
+        env:
+          APP_SLUG: ${{ steps.release_app.outputs['app-slug'] }}
+          GH_TOKEN: ${{ steps.release_app.outputs.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$APP_SLUG" != 'mackysoft-release' ]]; then
+            printf 'unexpected release app: %s\n' "$APP_SLUG" >&2
+            exit 1
+          fi
+          bot_login="${APP_SLUG}[bot]"
+          bot_id="$(gh api "/users/${APP_SLUG}%5Bbot%5D" --jq '.id')"
+          if [[ "$bot_id" != '315862625' ]]; then
+            printf 'unexpected release app bot id: %s\n' "$bot_id" >&2
+            exit 1
+          fi
+          printf 'name=%s\n' "$bot_login" >> "$GITHUB_OUTPUT"
+          printf 'email=%s+%s@users.noreply.github.com\n' "$bot_id" "$bot_login" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare or validate the release commit
+        id: candidate
+        env:
+          APP_EMAIL: ${{ steps.release_app_identity.outputs.email }}
+          APP_NAME: ${{ steps.release_app_identity.outputs.name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$RELEASE_TAG" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ || "$RELEASE_TAG" == '0.0.0' ]]; then
+            printf 'release tag must be a nonzero <major>.<minor>.<patch>: %s\n' "$RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          release_branch="release/$RELEASE_TAG"
+          expected_subject="chore(release): prepare $RELEASE_TAG"
+          git fetch --force origin "$DEFAULT_BRANCH" "refs/heads/$release_branch:refs/remotes/origin/$release_branch" || true
+          git fetch --force --tags origin
+          main_sha="$(git rev-parse "origin/$DEFAULT_BRANCH")"
+
+          validate_release_commit() {
+            local candidate_sha="$1"
+            local parent_sha
+            local candidate_tree
+            local parent_tree
+            local subject
+            local author_name
+            local author_email
+
+            parent_sha="$(git rev-parse "$candidate_sha^")"
+            candidate_tree="$(git show -s --format=%T "$candidate_sha")"
+            parent_tree="$(git show -s --format=%T "$parent_sha")"
+            subject="$(git show -s --format=%s "$candidate_sha")"
+            author_name="$(git show -s --format=%an "$candidate_sha")"
+            author_email="$(git show -s --format=%ae "$candidate_sha")"
+            [[ "$candidate_tree" == "$parent_tree" && "$subject" == "$expected_subject" \
+              && "$author_name" == "$APP_NAME" && "$author_email" == "$APP_EMAIL" ]]
+          }
+
+          if git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
+            tag_sha="$(git rev-list -n 1 "$RELEASE_TAG")"
+            if ! validate_release_commit "$tag_sha" || ! git merge-base --is-ancestor "$tag_sha" "origin/$DEFAULT_BRANCH"; then
+              printf 'existing tag does not identify the expected release commit: %s\n' "$RELEASE_TAG" >&2
+              exit 1
+            fi
+            printf 'sha=%s\n' "$tag_sha" >> "$GITHUB_OUTPUT"
+            printf 'already_tagged=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git rev-parse -q --verify "refs/remotes/origin/$release_branch" >/dev/null; then
+            candidate_sha="$(git rev-parse "origin/$release_branch")"
+            if ! validate_release_commit "$candidate_sha" \
+              || [[ "$(git rev-parse "$candidate_sha^")" != "$main_sha" ]]; then
+              printf 'existing release branch is not the expected candidate: %s\n' "$release_branch" >&2
+              exit 1
+            fi
+          else
+            git switch --create "$release_branch" "$main_sha"
+            git config user.name "$APP_NAME"
+            git config user.email "$APP_EMAIL"
+            git commit --allow-empty -m "$expected_subject"
+            candidate_sha="$(git rev-parse HEAD)"
+            git push origin "HEAD:refs/heads/$release_branch"
+          fi
+
+          printf 'sha=%s\n' "$candidate_sha" >> "$GITHUB_OUTPUT"
+          printf 'branch=%s\n' "$release_branch" >> "$GITHUB_OUTPUT"
+          printf 'already_tagged=false\n' >> "$GITHUB_OUTPUT"
+
+      - name: Promote verified release commit
+        id: promotion
+        env:
+          ALREADY_TAGGED: ${{ steps.candidate.outputs.already_tagged }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BRANCH: ${{ steps.candidate.outputs.branch }}
+          RELEASE_BOT_ID: "315862625"
+          RELEASE_BOT_TOKEN: ${{ steps.release_app.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$ALREADY_TAGGED" == 'true' ]]; then
+            printf 'sha=%s\n' "$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          for _ in {1..60}; do
+            run_id="$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow verify.yaml \
+              --branch "$RELEASE_BRANCH" \
+              --commit "$CANDIDATE_SHA" \
+              --event push \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId // empty')"
+            if [[ -n "$run_id" ]]; then
+              gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
+              run_actor_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq '.actor.id')"
+              if [[ "$run_actor_id" != "$RELEASE_BOT_ID" ]]; then
+                printf 'Verify run for %s was not triggered by the release bot; actor id: %s\n' "$CANDIDATE_SHA" "$run_actor_id" >&2
+                exit 1
+              fi
+              break
+            fi
+            sleep 5
+          done
+
+          if [[ -z "${run_id:-}" ]]; then
+            printf 'timed out waiting for verify on %s\n' "$CANDIDATE_SHA" >&2
+            exit 1
+          fi
+
+          GH_TOKEN="$RELEASE_BOT_TOKEN" gh api \
+            --method PATCH \
+            "repos/$GITHUB_REPOSITORY/git/refs/heads/$DEFAULT_BRANCH" \
+            -f sha="$CANDIDATE_SHA" \
+            -F force=false >/dev/null
+
+          promoted_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$DEFAULT_BRANCH" --jq '.object.sha')"
+          if [[ "$promoted_sha" != "$CANDIDATE_SHA" ]]; then
+            printf 'release commit is not the default branch tip; expected %s, actual %s\n' "$CANDIDATE_SHA" "$promoted_sha" >&2
+            exit 1
+          fi
+
+          git push origin --delete "$RELEASE_BRANCH"
+          printf 'sha=%s\n' "$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Create release tag
+        if: steps.candidate.outputs.already_tagged != 'true'
+        env:
+          RELEASE_SHA: ${{ steps.promotion.outputs.sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          git tag "$RELEASE_TAG" "$RELEASE_SHA"
+          git push origin "refs/tags/$RELEASE_TAG"
+
+  publish:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Require the release bot actor
+        env:
+          ACTOR_ID: ${{ github.actor_id }}
+        run: |
+          set -euo pipefail
+          if [[ "$ACTOR_ID" != '315862625' ]]; then
+            printf 'release tags must be pushed by mackysoft-release[bot]; actor id: %s\n' "$ACTOR_ID" >&2
+            exit 1
+          fi
+
+      - name: Require a stable release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ || "$RELEASE_TAG" == '0.0.0' ]]; then
+            printf 'release tag must be a nonzero stable <major>.<minor>.<patch>: %s\n' "$RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Guard release source
+        id: release_source
+        uses: mackysoft/actions/release/source-guard@5bd02b67aaf373c23e871c8a6cf79e19652bbc9b
+        with:
+          tag-name: ${{ github.ref_name }}
+          default-branch: ${{ github.event.repository.default_branch }}
+
+      - name: Guard release commit
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          release_sha="$(git rev-parse HEAD)"
+          parent_sha="$(git rev-parse "$release_sha^")"
+          parent_count="$(git rev-list --parents -n 1 "$release_sha" | awk '{print NF - 1}')"
+          expected_subject="chore(release): prepare $RELEASE_TAG"
+          if [[ "$parent_count" != '1' || "$(git show -s --format=%s "$release_sha")" != "$expected_subject" \
+            || "$(git show -s --format=%an "$release_sha")" != 'mackysoft-release[bot]' \
+            || "$(git show -s --format=%ae "$release_sha")" != '315862625+mackysoft-release[bot]@users.noreply.github.com' \
+            || "$(git show -s --format=%T "$release_sha")" != "$(git show -s --format=%T "$parent_sha")" ]]; then
+            printf 'release tag must identify the expected empty release commit.\n' >&2
+            exit 1
+          fi
+
+      - name: Require the verified release candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.release_source.outputs['release-sha'] }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          verify_run_id="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/verify.yaml/runs?event=push&head_sha=$RELEASE_SHA&per_page=100" \
+            --jq '.workflow_runs[] | select(.head_branch == "release/" + env.RELEASE_TAG and .conclusion == "success") | .id' \
+            | head -n 1)"
+          if [[ -z "$verify_run_id" ]]; then
+            printf 'no successful Verify run exists for release candidate %s.\n' "$RELEASE_SHA" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Verify
+        run: bash scripts/verify.sh
+
+      - name: Pack release package
+        id: package
+        env:
+          PACKAGE_VERSION: ${{ steps.release_source.outputs['package-version'] }}
+        run: |
+          set -euo pipefail
+          package_directory="$(mktemp -d "$RUNNER_TEMP/moira-package.XXXXXX")"
+          trap 'rm -rf -- "$package_directory"' EXIT
+          dotnet build src/MackySoft.Moira/MackySoft.Moira.csproj --configuration Release --no-restore \
+            -p:Version="$PACKAGE_VERSION" \
+            -p:PackageVersion="$PACKAGE_VERSION"
+          dotnet pack src/MackySoft.Moira/MackySoft.Moira.csproj --configuration Release --no-build --no-restore \
+            -p:Version="$PACKAGE_VERSION" \
+            -p:PackageVersion="$PACKAGE_VERSION" \
+            --output "$package_directory"
+          shopt -s nullglob
+          package_files=("$package_directory"/MackySoft.Moira."$PACKAGE_VERSION".nupkg)
+          shopt -u nullglob
+          if [[ ${#package_files[@]} -ne 1 ]]; then
+            printf 'expected exactly one release package, found %s\n' "${#package_files[@]}" >&2
+            exit 1
+          fi
+          artifact_directory="$RUNNER_TEMP/moira-release-artifact"
+          rm -rf -- "$artifact_directory"
+          mkdir -p "$artifact_directory"
+          mv "${package_files[0]}" "$artifact_directory/"
+          printf 'directory=%s\n' "$artifact_directory" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release package
+        env:
+          PACKAGE_DIRECTORY: ${{ steps.package.outputs.directory }}
+          PACKAGE_VERSION: ${{ steps.release_source.outputs['package-version'] }}
+          RELEASE_SHA: ${{ steps.release_source.outputs['release-sha'] }}
+        run: |
+          set -euo pipefail
+          package_file="$PACKAGE_DIRECTORY/MackySoft.Moira.$PACKAGE_VERSION.nupkg"
+          nuspec_path="$(unzip -Z1 "$package_file" | awk '/\.nuspec$/')"
+          if [[ -z "$nuspec_path" || "$nuspec_path" == *$'\n'* ]]; then
+            printf 'release package must contain exactly one nuspec.\n' >&2
+            exit 1
+          fi
+          for package_entry in \
+            'README.md' \
+            'LICENSE' \
+            'lib/netstandard2.1/MackySoft.Moira.dll' \
+            'lib/netstandard2.1/MackySoft.Moira.xml'; do
+            if ! unzip -Z1 "$package_file" | grep -Fx "$package_entry" >/dev/null; then
+              printf 'release package is missing %s.\n' "$package_entry" >&2
+              exit 1
+            fi
+          done
+          metadata="$(unzip -p "$package_file" "$nuspec_path" | tr -d '\r\n')"
+          package_id="$(sed -n 's|.*<id>\([^<]*\)</id>.*|\1|p' <<< "$metadata")"
+          package_version="$(sed -n 's|.*<version>\([^<]*\)</version>.*|\1|p' <<< "$metadata")"
+          license="$(sed -n 's|.*<license[^>]*>\([^<]*\)</license>.*|\1|p' <<< "$metadata")"
+          repository_url="$(sed -n 's|.*<repository[^>]* url="\([^"]*\)".*|\1|p' <<< "$metadata")"
+          repository_commit="$(sed -n 's|.*<repository[^>]* commit="\([^"]*\)".*|\1|p' <<< "$metadata")"
+          if [[ "$package_id" != 'MackySoft.Moira' || "$package_version" != "$PACKAGE_VERSION" \
+            || "$license" != 'MIT' || "$repository_url" != 'https://github.com/mackysoft/Moira' \
+            || "$repository_commit" != "$RELEASE_SHA" ]]; then
+            printf 'release package metadata does not match the release source.\n' >&2
+            exit 1
+          fi
+
+      - name: Inspect NuGet package state
+        id: package_state
+        uses: mackysoft/actions/nuget/package-state@5bd02b67aaf373c23e871c8a6cf79e19652bbc9b
+        with:
+          mode: inspect
+          package-version: ${{ steps.release_source.outputs['package-version'] }}
+          package-ids: MackySoft.Moira
+
+      - name: Publish to NuGet.org
+        if: steps.package_state.outputs['publish-required'] == 'true'
+        uses: mackysoft/actions/nuget/trusted-publish@5bd02b67aaf373c23e871c8a6cf79e19652bbc9b
+        with:
+          package-glob: ${{ steps.package.outputs.directory }}/MackySoft.Moira.*.nupkg
+          nuget-user: ${{ vars.NUGET_USER }}
+
+      - name: Wait for NuGet package availability
+        uses: mackysoft/actions/nuget/package-state@5bd02b67aaf373c23e871c8a6cf79e19652bbc9b
+        with:
+          mode: wait
+          package-version: ${{ steps.release_source.outputs['package-version'] }}
+          package-ids: MackySoft.Moira
+          max-attempts: 30
+          interval-seconds: 10
+
+      - name: Create verified GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_VERSION: ${{ steps.release_source.outputs['package-version'] }}
+          RELEASE_SHA: ${{ steps.release_source.outputs['release-sha'] }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          package_name="MackySoft.Moira.${PACKAGE_VERSION}.nupkg"
+          package_name_lower="${package_name,,}"
+          package_version_lower="${PACKAGE_VERSION,,}"
+          package_path="$RUNNER_TEMP/$package_name"
+          notes_path="$(mktemp "$RUNNER_TEMP/moira-release-notes.XXXXXX")"
+          trap 'rm -f -- "$package_path" "$notes_path"' EXIT
+
+          curl --fail --location --retry 5 --retry-all-errors --silent --show-error \
+            "https://api.nuget.org/v3-flatcontainer/mackysoft.moira/$package_version_lower/$package_name_lower" \
+            --output "$package_path"
+          if ! unzip -Z1 "$package_path" | grep -Fx '.signature.p7s' >/dev/null; then
+            printf 'NuGet package is not repository-signed: %s\n' "$package_name" >&2
+            exit 1
+          fi
+          dotnet nuget verify "$package_path" --all
+
+          nuspec_path="$(unzip -Z1 "$package_path" | awk '/\.nuspec$/')"
+          if [[ -z "$nuspec_path" || "$nuspec_path" == *$'\n'* ]]; then
+            printf 'NuGet package must contain exactly one nuspec: %s\n' "$package_name" >&2
+            exit 1
+          fi
+          metadata="$(unzip -p "$package_path" "$nuspec_path" | tr -d '\r\n')"
+          package_id="$(sed -n 's|.*<id>\([^<]*\)</id>.*|\1|p' <<< "$metadata")"
+          package_version="$(sed -n 's|.*<version>\([^<]*\)</version>.*|\1|p' <<< "$metadata")"
+          license="$(sed -n 's|.*<license[^>]*>\([^<]*\)</license>.*|\1|p' <<< "$metadata")"
+          repository_url="$(sed -n 's|.*<repository[^>]* url="\([^"]*\)".*|\1|p' <<< "$metadata")"
+          repository_commit="$(sed -n 's|.*<repository[^>]* commit="\([^"]*\)".*|\1|p' <<< "$metadata")"
+          if [[ "$package_id" != 'MackySoft.Moira' || "$package_version" != "$PACKAGE_VERSION" \
+            || "$license" != 'MIT' || "$repository_url" != 'https://github.com/mackysoft/Moira' \
+            || "$repository_commit" != "$RELEASE_SHA" ]]; then
+            printf 'NuGet package metadata does not match the release source.\n' >&2
+            exit 1
+          fi
+          for package_entry in \
+            'README.md' \
+            'LICENSE' \
+            'lib/netstandard2.1/MackySoft.Moira.dll' \
+            'lib/netstandard2.1/MackySoft.Moira.xml'; do
+            if ! unzip -Z1 "$package_path" | grep -Fx "$package_entry" >/dev/null; then
+              printf 'signed NuGet package is missing %s.\n' "$package_entry" >&2
+              exit 1
+            fi
+          done
+
+          gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f "tag_name=$RELEASE_TAG" --jq '.body' > "$notes_path"
+          gh release create "$RELEASE_TAG" "$package_path" --draft --title "$PACKAGE_VERSION" --notes-file "$notes_path"
+
+          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          release_id="$(jq -er '.id' <<< "$release")"
+          release_target="$(jq -er '.target_commitish' <<< "$release")"
+          release_draft="$(jq -er '.draft' <<< "$release")"
+          asset="$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" | jq -cer --arg name "$package_name" '
+            if length == 1 and .[0].name == $name then .[0] else error("expected one package asset") end')"
+          package_digest="$(sha256sum "$package_path" | awk '{print $1}')"
+          if [[ "$release_target" != "$RELEASE_SHA" || "$release_draft" != 'true' \
+            || "$(jq -er '.digest' <<< "$asset")" != "sha256:$package_digest" ]]; then
+            printf 'GitHub Release draft does not match the verified package.\n' >&2
+            exit 1
+          fi
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=false >/dev/null

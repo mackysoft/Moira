@@ -1,0 +1,609 @@
+{
+  "subjects": {
+    "owned": [
+      {
+        "matches": [
+          {
+            "projectExact": [
+              "src/MackySoft.Moira/MackySoft.Moira.csproj",
+              "tests/MackySoft.Moira.Tests/MackySoft.Moira.Tests.csproj"
+            ],
+            "subjectKindExact": [
+              "project"
+            ]
+          },
+          {
+            "projectExact": [
+              "src/MackySoft.Moira/MackySoft.Moira.csproj",
+              "tests/MackySoft.Moira.Tests/MackySoft.Moira.Tests.csproj"
+            ],
+            "namespacePrefix": [
+              "MackySoft.Moira"
+            ],
+            "subjectKindExact": [
+              "type",
+              "method",
+              "constructor",
+              "property",
+              "field",
+              "event"
+            ]
+          }
+        ]
+      }
+    ],
+    "external": []
+  },
+  "classifiers": {
+    "codeKind": [
+      {
+        "label": "product",
+        "matches": [
+          {
+            "projectExact": [
+              "src/MackySoft.Moira/MackySoft.Moira.csproj"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "tests",
+        "matches": [
+          {
+            "projectExact": [
+              "tests/MackySoft.Moira.Tests/MackySoft.Moira.Tests.csproj"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "core-library",
+        "matches": [
+          {
+            "assemblyExact": [
+              "netstandard",
+              "System.Runtime",
+              "System.Private.CoreLib"
+            ],
+            "namespaceExact": [
+              "System",
+              "System.Diagnostics.CodeAnalysis"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "test-collections",
+        "matches": [
+          {
+            "assemblyExact": [
+              "System.Collections",
+              "System.Runtime",
+              "System.Private.CoreLib"
+            ],
+            "namespaceExact": [
+              "System.Collections",
+              "System.Collections.Generic"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "test-framework",
+        "matches": [
+          {
+            "assemblyExact": [
+              "xunit.core",
+              "xunit.assert",
+              "xunit.abstractions"
+            ],
+            "namespacePrefix": [
+              "Xunit"
+            ]
+          }
+        ]
+      }
+    ],
+    "domain": [],
+    "layer": [
+      {
+        "label": "project",
+        "matches": [
+          {
+            "projectExact": [
+              "src/MackySoft.Moira/MackySoft.Moira.csproj",
+              "tests/MackySoft.Moira.Tests/MackySoft.Moira.Tests.csproj"
+            ],
+            "subjectKindExact": [
+              "project"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "distribution-entry",
+        "matches": [
+          {
+            "assemblyExact": [
+              "MackySoft.Moira"
+            ],
+            "namespaceExact": [
+              "MackySoft.Moira"
+            ],
+            "pathExact": [
+              "src/MackySoft.Moira/WeightedEntry.cs"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "selection-method",
+        "matches": [
+          {
+            "assemblyExact": [
+              "MackySoft.Moira"
+            ],
+            "namespaceExact": [
+              "MackySoft.Moira"
+            ],
+            "pathExact": [
+              "src/MackySoft.Moira/WeightedSelectionMethod.cs"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "distribution",
+        "matches": [
+          {
+            "assemblyExact": [
+              "MackySoft.Moira"
+            ],
+            "namespaceExact": [
+              "MackySoft.Moira"
+            ],
+            "pathExact": [
+              "src/MackySoft.Moira/WeightedDistribution.cs"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "canonical-table",
+        "matches": [
+          {
+            "assemblyExact": [
+              "MackySoft.Moira"
+            ],
+            "namespaceExact": [
+              "MackySoft.Moira"
+            ],
+            "pathExact": [
+              "src/MackySoft.Moira/WeightedSelectionPlans/CanonicalWeightedTable.cs"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "selection-dispatch",
+        "matches": [
+          {
+            "assemblyExact": [
+              "MackySoft.Moira"
+            ],
+            "namespaceExact": [
+              "MackySoft.Moira"
+            ],
+            "pathExact": [
+              "src/MackySoft.Moira/WeightedSelectionPlans/CompiledWeightedSelectionPlan.cs"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "cumulative-plan",
+        "matches": [
+          {
+            "assemblyExact": [
+              "MackySoft.Moira"
+            ],
+            "namespaceExact": [
+              "MackySoft.Moira"
+            ],
+            "pathExact": [
+              "src/MackySoft.Moira/WeightedSelectionPlans/CumulativeWeightedSelectionPlan.cs"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "alias-plan",
+        "matches": [
+          {
+            "assemblyExact": [
+              "MackySoft.Moira"
+            ],
+            "namespaceExact": [
+              "MackySoft.Moira"
+            ],
+            "pathExact": [
+              "src/MackySoft.Moira/WeightedSelectionPlans/AliasWeightedSelectionPlan.cs"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "bag-entry",
+        "matches": [
+          {
+            "assemblyExact": [
+              "MackySoft.Moira"
+            ],
+            "namespaceExact": [
+              "MackySoft.Moira"
+            ],
+            "pathExact": [
+              "src/MackySoft.Moira/WeightedBagEntry.cs"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "bag-definition",
+        "matches": [
+          {
+            "assemblyExact": [
+              "MackySoft.Moira"
+            ],
+            "namespaceExact": [
+              "MackySoft.Moira"
+            ],
+            "pathExact": [
+              "src/MackySoft.Moira/WeightedBagDefinition.cs"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "bag-inventory",
+        "matches": [
+          {
+            "assemblyExact": [
+              "MackySoft.Moira"
+            ],
+            "namespaceExact": [
+              "MackySoft.Moira"
+            ],
+            "pathExact": [
+              "src/MackySoft.Moira/WeightedBag.cs"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "selection-math",
+        "matches": [
+          {
+            "assemblyExact": [
+              "MackySoft.Moira"
+            ],
+            "namespaceExact": [
+              "MackySoft.Moira"
+            ],
+            "pathExact": [
+              "src/MackySoft.Moira/WeightedSelectionMath.cs"
+            ]
+          }
+        ]
+      },
+      {
+        "label": "contract-tests",
+        "matches": [
+          {
+            "assemblyExact": [
+              "MackySoft.Moira.Tests"
+            ],
+            "namespacePrefix": [
+              "MackySoft.Moira.Tests"
+            ],
+            "subjectKindExact": [
+              "type",
+              "method",
+              "constructor",
+              "property",
+              "field",
+              "event"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "policies": {
+    "dependencies": [
+      {
+        "from": {
+          "subject": "owned",
+          "codeKind": [
+            "product"
+          ]
+        },
+        "allow": [
+          {
+            "subject": "owned",
+            "codeKind": [
+              "product"
+            ],
+            "layer": [
+              "$same"
+            ]
+          },
+          {
+            "subject": "external",
+            "codeKind": [
+              "core-library"
+            ]
+          }
+        ]
+      },
+      {
+        "from": {
+          "subject": "owned",
+          "codeKind": [
+            "product"
+          ],
+          "layer": [
+            "distribution"
+          ]
+        },
+        "allow": [
+          {
+            "subject": "owned",
+            "codeKind": [
+              "product"
+            ],
+            "layer": [
+              "distribution-entry",
+              "selection-method",
+              "canonical-table",
+              "selection-dispatch",
+              "selection-math"
+            ]
+          }
+        ]
+      },
+      {
+        "from": {
+          "subject": "owned",
+          "codeKind": [
+            "product"
+          ],
+          "layer": [
+            "canonical-table"
+          ]
+        },
+        "allow": [
+          {
+            "subject": "owned",
+            "codeKind": [
+              "product"
+            ],
+            "layer": [
+              "distribution-entry",
+              "selection-math"
+            ]
+          }
+        ]
+      },
+      {
+        "from": {
+          "subject": "owned",
+          "codeKind": [
+            "product"
+          ],
+          "layer": [
+            "selection-dispatch"
+          ]
+        },
+        "allow": [
+          {
+            "subject": "owned",
+            "codeKind": [
+              "product"
+            ],
+            "layer": [
+              "selection-method",
+              "cumulative-plan",
+              "alias-plan"
+            ]
+          }
+        ]
+      },
+      {
+        "from": {
+          "subject": "owned",
+          "codeKind": [
+            "product"
+          ],
+          "layer": [
+            "cumulative-plan"
+          ]
+        },
+        "allow": [
+          {
+            "subject": "owned",
+            "codeKind": [
+              "product"
+            ],
+            "layer": [
+              "selection-math"
+            ]
+          }
+        ]
+      },
+      {
+        "from": {
+          "subject": "owned",
+          "codeKind": [
+            "product"
+          ],
+          "layer": [
+            "alias-plan"
+          ]
+        },
+        "allow": [
+          {
+            "subject": "owned",
+            "codeKind": [
+              "product"
+            ],
+            "layer": [
+              "selection-math"
+            ]
+          }
+        ]
+      },
+      {
+        "from": {
+          "subject": "owned",
+          "codeKind": [
+            "product"
+          ],
+          "layer": [
+            "bag-definition"
+          ]
+        },
+        "allow": [
+          {
+            "subject": "owned",
+            "codeKind": [
+              "product"
+            ],
+            "layer": [
+              "bag-entry",
+              "bag-inventory",
+              "selection-math"
+            ]
+          }
+        ]
+      },
+      {
+        "from": {
+          "subject": "owned",
+          "codeKind": [
+            "product"
+          ],
+          "layer": [
+            "bag-inventory"
+          ]
+        },
+        "allow": [
+          {
+            "subject": "owned",
+            "codeKind": [
+              "product"
+            ],
+            "layer": [
+              "bag-definition",
+              "selection-math"
+            ]
+          }
+        ]
+      },
+      {
+        "from": {
+          "subject": "owned",
+          "codeKind": [
+            "tests"
+          ],
+          "layer": [
+            "project"
+          ]
+        },
+        "allow": [
+          {
+            "subject": "owned",
+            "codeKind": [
+              "product"
+            ],
+            "layer": [
+              "project"
+            ]
+          }
+        ]
+      },
+      {
+        "from": {
+          "subject": "owned",
+          "codeKind": [
+            "tests"
+          ],
+          "layer": [
+            "contract-tests"
+          ]
+        },
+        "allow": [
+          {
+            "subject": "owned",
+            "codeKind": [
+              "tests"
+            ],
+            "layer": [
+              "contract-tests"
+            ]
+          },
+          {
+            "subject": "owned",
+            "codeKind": [
+              "product"
+            ],
+            "layer": [
+              "distribution-entry",
+              "selection-method",
+              "distribution",
+              "bag-entry",
+              "bag-definition",
+              "bag-inventory"
+            ]
+          },
+          {
+            "subject": "external",
+            "codeKind": [
+              "core-library",
+              "test-collections",
+              "test-framework"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "coverage": {
+    "ownedSubjectsMustClassify": [
+      "codeKind",
+      "layer"
+    ],
+    "localSubjectsMustBeOwned": [
+      {
+        "matches": [
+          {
+            "pathPrefix": [
+              "src",
+              "tests"
+            ],
+            "subjectKindExact": [
+              "project",
+              "type",
+              "method",
+              "constructor",
+              "property",
+              "field",
+              "event"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "thresholds": {}
+}
