@@ -437,20 +437,61 @@ jobs:
             fi
           done
 
-          gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
-            -f "tag_name=$RELEASE_TAG" --jq '.body' > "$notes_path"
-          gh release create "$RELEASE_TAG" "$package_path" --draft --title "$PACKAGE_VERSION" --notes-file "$notes_path"
+          find_release_by_tag() {
+            gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              | jq -sc --arg tag "$RELEASE_TAG" '
+                (add // [])
+                | map(select(.tag_name == $tag))
+                | if length == 0 then {}
+                  elif length == 1 then .[0]
+                  else error("multiple releases use the release tag")
+                  end'
+          }
 
-          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          release="$(find_release_by_tag)"
+          release_id="$(jq -r '.id // empty' <<< "$release")"
+          if [[ -z "$release_id" ]]; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+              -f "tag_name=$RELEASE_TAG" --jq '.body' > "$notes_path"
+            gh release create "$RELEASE_TAG" "$package_path" --draft --title "$PACKAGE_VERSION" --notes-file "$notes_path"
+            release="$(find_release_by_tag)"
+            release_id="$(jq -r '.id // empty' <<< "$release")"
+            if [[ -z "$release_id" ]]; then
+              printf 'GitHub Release draft was not found after creation.\n' >&2
+              exit 1
+            fi
+          fi
+
           release_id="$(jq -er '.id' <<< "$release")"
-          release_target="$(jq -er '.target_commitish' <<< "$release")"
+          release_tag="$(jq -er '.tag_name' <<< "$release")"
+          release_name="$(jq -er '.name' <<< "$release")"
           release_draft="$(jq -er '.draft' <<< "$release")"
+          release_prerelease="$(jq -er '.prerelease' <<< "$release")"
           asset="$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" | jq -cer --arg name "$package_name" '
             if length == 1 and .[0].name == $name then .[0] else error("expected one package asset") end')"
           package_digest="$(sha256sum "$package_path" | awk '{print $1}')"
-          if [[ "$release_target" != "$RELEASE_SHA" || "$release_draft" != 'true' \
+          if [[ "$release_tag" != "$RELEASE_TAG" || "$release_name" != "$PACKAGE_VERSION" \
+            || "$release_prerelease" != 'false' \
             || "$(jq -er '.digest' <<< "$asset")" != "sha256:$package_digest" ]]; then
-            printf 'GitHub Release draft does not match the verified package.\n' >&2
+            printf 'GitHub Release does not match the verified package and release tag.\n' >&2
             exit 1
           fi
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=false >/dev/null
+          case "$release_draft" in
+            true)
+              gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$release_id" -F draft=false >/dev/null
+              ;;
+            false)
+              ;;
+            *)
+              printf 'GitHub Release draft state is invalid: %s\n' "$release_draft" >&2
+              exit 1
+              ;;
+          esac
+
+          published_release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          if [[ "$(jq -er '.id' <<< "$published_release")" != "$release_id" \
+            || "$(jq -er '.tag_name' <<< "$published_release")" != "$RELEASE_TAG" \
+            || "$(jq -er '.draft' <<< "$published_release")" != 'false' ]]; then
+            printf 'GitHub Release did not publish the verified draft.\n' >&2
+            exit 1
+          fi
